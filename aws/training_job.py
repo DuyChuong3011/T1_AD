@@ -4,8 +4,8 @@ from sagemaker.sklearn.estimator import SKLearn
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--bucket', type=str, default='amznce23')
-    parser.add_argument('--role', type=str, default='arn:aws:iam::795644302727:role/SageMakerExecutionRole-MLOps')
+    parser.add_argument('--bucket', type=str, default='scada-fault-prediction')
+    parser.add_argument('--role', type=str, default='arn:aws:s3:::scada-fault-prediction')
     args = parser.parse_args()
 
     print("🚀 Khởi động SageMaker Training Job cho mô hình GMM...")
@@ -16,7 +16,7 @@ def main():
         entry_point='src/train.py',             # Script mà máy chủ AWS sẽ chạy
         role=args.role,                         # Quyền truy cập
         instance_count=1,                       # Số lượng máy chủ
-        instance_type='ml.m5.xlarge',            # Cấu hình máy (2 vCPU, 8GB RAM)
+        instance_type='ml.m5.large',            # Cấu hình máy (2 vCPU, 8GB RAM)
         framework_version='1.2-1',              # Phiên bản Scikit-learn trên AWS
         base_job_name='wind-turbine-gmm',       # Tiền tố tên Job để dễ quản lý
         hyperparameters={
