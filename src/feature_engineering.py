@@ -85,7 +85,7 @@ def calculate_z_scores(df: pd.DataFrame, columns) -> pd.DataFrame:
 def calculate_differences(df: pd.DataFrame, columns, periods=[1]) -> pd.DataFrame:
     """
     Calculate differences (lag differences) for specified columns and return them as new features.
-    
+
     Parameters:
     -----------
     df : pd.DataFrame
@@ -94,7 +94,7 @@ def calculate_differences(df: pd.DataFrame, columns, periods=[1]) -> pd.DataFram
         The column(s) to compute differences for.
     periods : list of int, default [1]
         Periods to shift for calculating difference.
-        
+
     Returns:
     --------
     pd.DataFrame
@@ -102,19 +102,63 @@ def calculate_differences(df: pd.DataFrame, columns, periods=[1]) -> pd.DataFram
         named '{column}_diff_{period}'.
     """
     df_feat = df.copy()
-    
+
     if isinstance(columns, str):
         columns = [columns]
-        
+
     for col in columns:
         if col not in df_feat.columns:
             continue
-            
+
         for p in periods:
             diff_col_name = f"{col}_diff_{p}"
             df_feat[diff_col_name] = df_feat[col].diff(periods=p)
-            
+
             # Fill the initial NaNs created by differencing with 0.0
             df_feat[diff_col_name] = df_feat[diff_col_name].fillna(0.0)
-            
+
     return df_feat
+
+
+if __name__ == "__main__":
+    import sys
+    import os
+
+    # SageMaker Processing paths
+    input_dir = "/opt/ml/processing/input"
+    output_dir = "/opt/ml/processing/output"
+
+    # Fallback for local testing
+    if not os.path.exists(input_dir):
+        input_dir = "../data/processed"
+    if not os.path.exists(output_dir):
+        output_dir = "../data/features"
+
+    print(f"[INFO] Đọc dữ liệu từ: {input_dir}")
+
+    # Tìm tất cả file CSV trong input
+    input_files = [f for f in os.listdir(input_dir) if f.endswith('.csv')]
+
+    for input_file in input_files:
+        input_path = os.path.join(input_dir, input_file)
+        output_file = input_file.replace('.csv', '_features.csv')
+        output_path = os.path.join(output_dir, output_file)
+
+        print(f"[INFO] Xử lý: {input_file}")
+
+        # Đọc dữ liệu
+        df = pd.read_csv(input_path)
+
+        # Áp dụng feature engineering
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+        df = calculate_rolling_stats(df, numeric_cols, windows=[6, 24])
+        df = calculate_z_scores(df, numeric_cols)
+        df = calculate_differences(df, numeric_cols, periods=[1])
+
+        # Lưu kết quả
+        os.makedirs(output_dir, exist_ok=True)
+        df.to_csv(output_path, index=False)
+        print(f"[INFO] Đã lưu: {output_path}")
+
+    print("[INFO] Hoàn thành feature engineering!")

@@ -1,0 +1,22 @@
+======================================================================
+MODEL VALIDATION REPORT
+Generated: 2026-07-13 10:55:48
+======================================================================
+
+TEST DATA
+  Records: 15,768
+  Features: 6
+
+PREDICTIONS
+  Min score: -16.9659
+  Max score: 48.6869
+  Mean score: -1.7117
+  Std dev: 7.8239
+
+ANOMALIES (1.5% contamination)
+  Count: 237
+  Rate: 1.50%
+  Threshold: 13.4996
+
+VALIDATION CHECKS: 4/5 passed
+Status: ⚠️  REVIEW NEEDED
