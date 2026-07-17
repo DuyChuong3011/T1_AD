@@ -1,4 +1,4 @@
-#!C:\Users\Admin\OneDrive\Documents\HOC_BAI\AWS\T1_AD\.venv312\Scripts\python.exe
+#!D:\HK252\T1_AD-main\.venv312\Scripts\python.exe
 
 import sys
 import json

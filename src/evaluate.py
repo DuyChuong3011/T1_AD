@@ -4,6 +4,8 @@ import argparse
 import pandas as pd
 import numpy as np
 import joblib
+import tarfile
+import glob
 from sklearn.metrics import f1_score, roc_auc_score, precision_score, recall_score
 
 def main():
@@ -23,6 +25,11 @@ def main():
 
     print("[INFO] Đang tải mô hình GMM và dữ liệu test...")
     # 1. Load model
+    tar_files = glob.glob(os.path.join(args.model_dir, '*.tar.gz'))
+    if tar_files:
+        with tarfile.open(tar_files[0]) as tar:
+            tar.extractall(args.model_dir)
+        print(f"[INFO] Giải nén: {tar_files[0]}")
     model_path = os.path.join(args.model_dir, "model.joblib")
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Không tìm thấy file model tại: {model_path}")
@@ -37,7 +44,8 @@ def main():
     y_test_pseudo = (df_test['power_residual'] < threshold).astype(int)
 
     # --- FEATURE SELECTION ---
-    features = [col for col in df_test.columns if ('zscore' in col) or ('diff' in col)]
+    features = list(model.feature_names_in_)
+    print(f"[INFO] Features từ model: {features}")
     X_test = df_test[features]
 
     print("[INFO] Đang dự đoán và chấm điểm...")
