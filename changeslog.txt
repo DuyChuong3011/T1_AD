@@ -1,0 +1,18 @@
+preprocessing
+
+1. Đã có cột Nhãn (Target Variable) 🎯
+Bản gốc: Không có nhãn. Mô hình của bạn bị mù mờ không biết thế nào là lỗi, thế nào là bình thường (chỉ có thể chạy Unsupervised Learning rất hên xui).
+Bản hiện tại: Có thêm cột Label_Error (0 là bình thường, 1 là lỗi). Output này cho phép bạn dùng ngay lập tức các siêu thuật toán dự đoán cực mạnh như XGBoost, Random Forest hoặc Deep Learning để học chính xác nguyên nhân gây ra lỗi.
+2. Thuật toán hiểu được "Góc gió" (Wind Direction) 🧭
+Bản gốc: Giữ nguyên góc gió từ 0 đến 360 độ. Máy tính hiểu rất máy móc: nó nghĩ góc 1 độ cách góc 359 độ cực kỳ xa (358 đơn vị). Nhưng trên thực tế vật lý, hai góc này thổi gần như cùng một hướng!
+Bản hiện tại: Xóa bỏ cột góc gió thô và đẻ ra 2 cột mới là Wind_Dir_Sin và Wind_Dir_Cos. Nhờ lượng giác, máy tính giờ đây hiểu hoàn hảo tính chất chu kỳ vòng tròn của hướng gió.
+3. Bảo toàn được "Dấu vết tội phạm" (Outlier Integrity) 🔍
+Bản gốc: Sử dụng Z-Score và IQR để cắt gọt (capping) các giá trị quá cao/quá thấp ép về mức trung bình. Sai lầm ở đây là: Trong bảo trì dự đoán, các giá trị dị biệt đó chính là "dấu vết hỏng hóc". Việc gọt đi chẳng khác nào xóa mất dấu vết hiện trường.
+Bản hiện tại: Giữ nguyên vẹn các điểm dữ liệu dị thường đột biến. Chỉ dọn dẹp các "nhiễu cảm biến" vô lý về mặt vật lý (như tuabin không thể sinh ra công suất âm, gió không thể thổi với tốc độ âm).
+4. Thuật toán có khái niệm về "Thời gian" (Time Awareness) ⏳
+Bản gốc: Chỉ lưu thời gian dưới dạng Index. Các mô hình Machine Learning (đặc biệt là dạng cây như XGBoost) không tự động đọc được Index thời gian.
+Bản hiện tại: Bổ sung 2 cột Month và Hour. Nhờ vậy, máy tính có thể học được các quy luật ngầm như: "À, lỗi này hay xảy ra vào ban đêm (Hour=2) của mùa đông (Month=12)".
+5. Gọn nhẹ và chống Nhiễu đa cộng tuyến (Dimensionality) ✂️
+Bản gốc: Tạo ra quá nhiều cột Rolling Mean, Rolling Std (cửa sổ 3, 6, 12, 24). Nó làm phình to dữ liệu và khiến các cột bị giống hệt nhau (đa cộng tuyến), làm mô hình bị "bối rối" và chạy rất chậm.
+Bản hiện tại: Cắt bỏ sự rườm rà, chỉ giữ lại một cột biến trễ đơn giản Lag_1 (thông số của 10 phút trước đó) để mô hình có khái niệm về "quán tính" của hệ thống là đủ.
+Tổng kết: Output cũ là một tập dữ liệu rườm rà về mặt thống kê nhưng lại mù mờ về mặt vật lý. Output mới là một tập dữ liệu cực kỳ tinh gọn, bám sát các định luật khí động học và sẵn sàng 100% để "cho ăn" (feed) vào các mô hình dự đoán.

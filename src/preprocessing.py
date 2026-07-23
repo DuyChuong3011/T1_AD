@@ -1,29 +1,10 @@
 import pandas as pd
 import numpy as np
-
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from feature_engineering import transform_wind_direction, extract_time_features, create_error_label
 
 def load_data(path: str, time_col: str = 'Date/Time', freq: str = '10min') -> pd.DataFrame:
-    """
-    Đọc dữ liệu SCADA T1.csv và đưa về lưới thời gian đều đặn.
-
-    Khác với dữ liệu mô phỏng, dữ liệu thật có các mốc thời gian bị thiếu (gap).
-    Hàm parse cột thời gian, sắp xếp, loại trùng, rồi reindex về lưới `freq`
-    để các mốc thiếu hiện ra dưới dạng NaN -> bước xử lý missing mới có ý nghĩa.
-
-    Parameters
-    ----------
-    path : str
-        Đường dẫn tới file CSV.
-    time_col : str, default 'Date/Time'
-        Tên cột thời gian gốc (định dạng '%d %m %Y %H:%M').
-    freq : str, default '10min'
-        Bước thời gian của lưới.
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame có cột 'timestamp' liên tục theo lưới thời gian.
-    """
+    """Đọc dữ liệu SCADA và đưa về lưới thời gian đều đặn (để lộ ra các mốc bị thiếu)."""
     df = pd.read_csv(path)
     df.columns = [c.strip() for c in df.columns]
     df[time_col] = pd.to_datetime(df[time_col], format='%d %m %Y %H:%M')
@@ -35,183 +16,79 @@ def load_data(path: str, time_col: str = 'Date/Time', freq: str = '10min') -> pd
     df = df.reset_index()
     return df
 
-
-def handle_missing_values(df: pd.DataFrame, columns=None, strategy='interpolate', fill_value=None) -> pd.DataFrame:
-    """
-    Xử lý giá trị khuyết trong DataFrame.
-
-    strategy: 'mean' | 'median' | 'mode' | 'constant' | 'ffill' | 'bfill'
-              | 'interpolate' (khuyến nghị cho chuỗi thời gian) | 'drop'
-    """
+def clean_physical_noise(df: pd.DataFrame) -> pd.DataFrame:
+    """Xử lý nhiễu vật lý cơ bản: Đưa các giá trị âm vô lý về 0."""
     df_clean = df.copy()
-
-    if columns is None:
-        columns = df_clean.columns.tolist()
-    elif isinstance(columns, str):
-        columns = [columns]
-
-    for col in columns:
-        if col not in df_clean.columns:
-            continue
-
-        if strategy == 'drop':
-            df_clean = df_clean.dropna(subset=[col])
-        elif strategy == 'ffill':
-            df_clean[col] = df_clean[col].ffill()
-        elif strategy == 'bfill':
-            df_clean[col] = df_clean[col].bfill()
-        elif strategy == 'constant':
-            if fill_value is not None:
-                df_clean[col] = df_clean[col].fillna(fill_value)
-            else:
-                raise ValueError("fill_value must be provided when strategy='constant'")
-        elif strategy == 'mean':
-            if pd.api.types.is_numeric_dtype(df_clean[col]):
-                df_clean[col] = df_clean[col].fillna(df_clean[col].mean())
-        elif strategy == 'median':
-            if pd.api.types.is_numeric_dtype(df_clean[col]):
-                df_clean[col] = df_clean[col].fillna(df_clean[col].median())
-        elif strategy == 'mode':
-            mode_series = df_clean[col].mode()
-            if not mode_series.empty:
-                df_clean[col] = df_clean[col].fillna(mode_series.iloc[0])
-        elif strategy == 'interpolate':
-            if pd.api.types.is_numeric_dtype(df_clean[col]):
-                df_clean[col] = df_clean[col].interpolate(method='linear').ffill().bfill()
-        else:
-            raise ValueError(f"Unknown strategy: {strategy}")
-
+    cols_to_check = ['LV ActivePower (kW)', 'Wind Speed (m/s)', 'Theoretical_Power_Curve (KWh)']
+    for col in cols_to_check:
+        if col in df_clean.columns:
+            df_clean[col] = df_clean[col].apply(lambda x: max(0.0, x) if pd.notnull(x) else x)
     return df_clean
 
+# Alias cho clean_physical_noise
+clean_physical_limits = clean_physical_noise
 
-def detect_outliers_iqr(df: pd.DataFrame, columns, factor=1.5) -> pd.DataFrame:
-    """Phát hiện ngoại lai bằng IQR. Trả về DataFrame boolean (True = ngoại lai)."""
-    if isinstance(columns, str):
-        columns = [columns]
+def encode_wind_direction(df: pd.DataFrame, col: str = 'Wind Direction (°)') -> pd.DataFrame:
+    """Mã hóa hướng gió dạng lượng giác."""
+    return transform_wind_direction(df, col=col)
 
-    outliers_mask = pd.DataFrame(index=df.index)
-    for col in columns:
-        if col not in df.columns or not pd.api.types.is_numeric_dtype(df[col]):
-            outliers_mask[col] = False
-            continue
-        q1 = df[col].quantile(0.25)
-        q3 = df[col].quantile(0.75)
-        iqr = q3 - q1
-        lower_bound = q1 - factor * iqr
-        upper_bound = q3 + factor * iqr
-        outliers_mask[col] = (df[col] < lower_bound) | (df[col] > upper_bound)
+def create_labels(df: pd.DataFrame, loss_threshold: float = 0.5) -> pd.DataFrame:
+    """Tạo nhãn lỗi và đặc trưng hao hụt công suất."""
+    return create_error_label(df)
 
-    return outliers_mask
-
-
-def detect_outliers_zscore(df: pd.DataFrame, columns, threshold=3.0) -> pd.DataFrame:
-    """Phát hiện ngoại lai bằng Z-score. Trả về DataFrame boolean (True = ngoại lai)."""
-    if isinstance(columns, str):
-        columns = [columns]
-
-    outliers_mask = pd.DataFrame(index=df.index)
-    for col in columns:
-        if col not in df.columns or not pd.api.types.is_numeric_dtype(df[col]):
-            outliers_mask[col] = False
-            continue
-        mean_val = df[col].mean()
-        std_val = df[col].std()
-        if std_val == 0:
-            outliers_mask[col] = False
-        else:
-            z_scores = (df[col] - mean_val) / std_val
-            outliers_mask[col] = z_scores.abs() > threshold
-
-    return outliers_mask
-
-
-def handle_outliers(df: pd.DataFrame, columns=None, method='physical', factor=1.5, threshold=3.0) -> pd.DataFrame:
-    """
-    Xử lý ngoại lai (Bản Cập nhật Hybrid).
-    Thay vì dùng IQR hay Z-score để gọt (gây mất tín hiệu hỏng hóc thực),
-    bản nâng cấp này ưu tiên phương pháp 'physical' - chỉ loại bỏ dữ liệu
-    phi vật lý (đưa giá trị âm về 0).
-    """
+def handle_missing_values(df: pd.DataFrame, columns=None, strategy='interpolate') -> pd.DataFrame:
+    """Nội suy tuyến tính cho các điểm dữ liệu bị khuyết."""
     df_clean = df.copy()
-    
-    # Mặc định clip các cột vật lý về 0
-    if method == 'physical':
-        if columns is None:
-            columns = ['LV ActivePower (kW)', 'Wind Speed (m/s)', 'Theoretical_Power_Curve (KWh)']
-        elif isinstance(columns, str):
-            columns = [columns]
-            
-        for col in columns:
-            if col in df_clean.columns and pd.api.types.is_numeric_dtype(df_clean[col]):
-                df_clean[col] = df_clean[col].clip(lower=0)
-    else:
-        # Nếu ai đó gọi lại logic cũ, báo warning
-        print("[WARNING] Bạn đang dùng phương pháp IQR/Z-score. Khuyến nghị dùng 'physical' để không mất dữ liệu bất thường.")
-        pass # Rút gọn code cũ để đơn giản hóa pipeline XGBoost
-        
+    target_cols = columns if columns is not None else df_clean.select_dtypes(include=[np.number]).columns
+    for col in target_cols:
+        if col in df_clean.columns:
+            df_clean[col] = df_clean[col].interpolate(method='linear').ffill().bfill()
     return df_clean
-
-
-def scale_features(df: pd.DataFrame, columns, method='standard', stats=None, return_stats=False):
-    """
-    Chuẩn hóa đặc trưng số.
-
-    Để tránh rò rỉ dữ liệu: fit trên TRAIN với return_stats=True để lấy tham số,
-    sau đó transform TEST bằng cách truyền lại stats đó.
-
-    method: 'standard' (Z-score) | 'minmax' [0,1] | 'robust' (median & IQR).
-    """
-    df_scaled = df.copy()
-    if isinstance(columns, str):
-        columns = [columns]
-
-    fitting = stats is None
-    if fitting:
-        stats = {}
-
-    for col in columns:
-        if col not in df_scaled.columns or not pd.api.types.is_numeric_dtype(df_scaled[col]):
-            continue
-
-        if method == 'standard':
-            if fitting:
-                stats[col] = {'mean': df_scaled[col].mean(), 'std': df_scaled[col].std()}
-            std_val = stats[col]['std']
-            df_scaled[col] = (df_scaled[col] - stats[col]['mean']) / std_val if std_val != 0 else 0.0
-
-        elif method == 'minmax':
-            if fitting:
-                stats[col] = {'min': df_scaled[col].min(), 'max': df_scaled[col].max()}
-            diff_val = stats[col]['max'] - stats[col]['min']
-            df_scaled[col] = (df_scaled[col] - stats[col]['min']) / diff_val if diff_val != 0 else 0.0
-
-        elif method == 'robust':
-            if fitting:
-                stats[col] = {'median': df_scaled[col].median(),
-                              'iqr': df_scaled[col].quantile(0.75) - df_scaled[col].quantile(0.25)}
-            iqr = stats[col]['iqr']
-            df_scaled[col] = (df_scaled[col] - stats[col]['median']) / iqr if iqr != 0 else 0.0
-        else:
-            raise ValueError(f"Unknown scaling method: {method}")
-
-    if return_stats:
-        return df_scaled, stats
-    return df_scaled
-
 
 def split_train_test_chrono(df: pd.DataFrame, test_size=0.3) -> tuple:
-    """
-    Chia train/test theo thời gian (chronological split) — dùng cho dữ liệu KHÔNG nhãn.
-
-    Phần đầu chuỗi (1 - test_size) làm train, phần cuối làm test. Giữ nguyên thứ tự
-    thời gian, không xáo trộn, tránh rò rỉ dữ liệu tương lai vào quá khứ.
-
-    Returns
-    -------
-    (train_df, test_df)
-    """
+    """Chia tập Train/Test theo thời gian để tránh rò rỉ dữ liệu tương lai."""
     df_sorted = df.copy().reset_index(drop=True)
     cut = int(len(df_sorted) * (1 - test_size))
     train_df = df_sorted.iloc[:cut].reset_index(drop=True)
     test_df = df_sorted.iloc[cut:].reset_index(drop=True)
     return train_df, test_df
+
+def scale_features(*args, columns=None, method='standard', return_stats=False, stats=None) -> tuple:
+    """
+    Chuẩn hóa đặc trưng. Hỗ trợ cả 2 dạng gọi:
+    1) scale_features(train_df, test_df, columns) -> (train_scaled, test_scaled)
+    2) scale_features(df, columns=cols, method='standard', return_stats=True/False, stats=stats)
+    """
+    if len(args) == 2 and isinstance(args[1], pd.DataFrame):
+        train_df, test_df = args[0], args[1]
+        cols = columns if columns is not None else train_df.select_dtypes(include=[np.number]).columns
+        scaler = MinMaxScaler()
+        train_scaled = train_df.copy()
+        test_scaled = test_df.copy()
+        train_scaled[cols] = scaler.fit_transform(train_scaled[cols])
+        test_scaled[cols] = scaler.transform(test_scaled[cols])
+        return train_scaled, test_scaled
+    
+    df = args[0].copy()
+    cols = columns if columns is not None else [c for c in df.select_dtypes(include=[np.number]).columns if c != 'timestamp']
+    
+    if stats is None:
+        if method == 'standard':
+            means = df[cols].mean()
+            stds = df[cols].std().replace(0, 1.0)
+            stats = {'mean': means, 'std': stds}
+        else:
+            mins = df[cols].min()
+            maxs = df[cols].max()
+            stats = {'min': mins, 'max': maxs}
+            
+    if 'mean' in stats:
+        df[cols] = (df[cols] - stats['mean']) / stats['std']
+    elif 'min' in stats:
+        denom = (stats['max'] - stats['min']).replace(0, 1.0)
+        df[cols] = (df[cols] - stats['min']) / denom
+        
+    if return_stats:
+        return df, stats
+    return df
+
