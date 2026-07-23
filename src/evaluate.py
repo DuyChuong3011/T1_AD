@@ -22,11 +22,14 @@ def main():
     # 1. Load model
     model_path = os.path.join(args.model_dir, "model.joblib")
     if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Không tìm thấy file model tại: {model_path}")
+        raise FileNotFoundError(f"Không tìm thấy file model tại: {model_path}. Đảm bảo bạn đang đứng ở thư mục 'src'.")
     model = joblib.load(model_path)
 
     # 2. Load test data
-    test_path = os.path.join(args.test, "T1_test.csv")
+    test_path = os.path.join(args.test, "T1_test_features.csv")
+    if not os.path.exists(test_path):
+        test_path = os.path.join(args.test, "T1_test.csv")
+
     df_test = pd.read_csv(test_path)
     
     if 'Label_Error' not in df_test.columns:

@@ -85,7 +85,7 @@ def calculate_z_scores(df: pd.DataFrame, columns) -> pd.DataFrame:
 def calculate_differences(df: pd.DataFrame, columns, periods=[1]) -> pd.DataFrame:
     """
     Calculate differences (lag differences) for specified columns and return them as new features.
-
+    
     Parameters:
     -----------
     df : pd.DataFrame
@@ -94,7 +94,7 @@ def calculate_differences(df: pd.DataFrame, columns, periods=[1]) -> pd.DataFram
         The column(s) to compute differences for.
     periods : list of int, default [1]
         Periods to shift for calculating difference.
-
+        
     Returns:
     --------
     pd.DataFrame
@@ -102,21 +102,21 @@ def calculate_differences(df: pd.DataFrame, columns, periods=[1]) -> pd.DataFram
         named '{column}_diff_{period}'.
     """
     df_feat = df.copy()
-
+    
     if isinstance(columns, str):
         columns = [columns]
-
+        
     for col in columns:
         if col not in df_feat.columns:
             continue
-
+            
         for p in periods:
             diff_col_name = f"{col}_diff_{p}"
             df_feat[diff_col_name] = df_feat[col].diff(periods=p)
-
+            
             # Fill the initial NaNs created by differencing with 0.0
             df_feat[diff_col_name] = df_feat[diff_col_name].fillna(0.0)
-
+            
     return df_feat
 
 def encode_wind_direction(df: pd.DataFrame, col_name='Wind Direction (°)') -> pd.DataFrame:
@@ -162,12 +162,16 @@ if __name__ == "__main__":
         output_dir = "../data/features"
 
     print(f"[INFO] Đọc dữ liệu từ: {input_dir}")
+    if not os.path.exists(input_dir):
+        print(f"[ERROR] Không tìm thấy thư mục {input_dir}. Đảm bảo bạn đang đứng ở thư mục 'src' khi chạy code.")
+        sys.exit(1)
 
     # Tìm tất cả file CSV trong input
     input_files = [f for f in os.listdir(input_dir) if f.endswith('.csv')]
 
     for input_file in input_files:
         input_path = os.path.join(input_dir, input_file)
+        # Giữ đúng tên file hoặc đổi đuôi
         output_file = input_file.replace('.csv', '_features.csv')
         output_path = os.path.join(output_dir, output_file)
 
@@ -176,7 +180,7 @@ if __name__ == "__main__":
         # Đọc dữ liệu
         df = pd.read_csv(input_path)
 
-        # Áp dụng feature engineering
+        # Áp dụng feature engineering gốc
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
         df = calculate_rolling_stats(df, numeric_cols, windows=[6, 24])

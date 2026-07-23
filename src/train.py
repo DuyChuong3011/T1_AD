@@ -19,10 +19,13 @@ def main():
 
     # 1. Đọc dữ liệu train
     print(f"[INFO] Đang tìm dữ liệu tại: {args.train}")
-    train_path = os.path.join(args.train, "T1_train.csv")
-    
+    # Thông minh nhận diện file có hậu tố _features hoặc file gốc
+    train_path = os.path.join(args.train, "T1_train_features.csv")
     if not os.path.exists(train_path):
-        raise FileNotFoundError(f"Không tìm thấy file {train_path}")
+        train_path = os.path.join(args.train, "T1_train.csv")
+        
+    if not os.path.exists(train_path):
+        raise FileNotFoundError(f"Không tìm thấy file train. Đảm bảo bạn đang đứng ở thư mục 'src' khi chạy.")
 
     df_train = pd.read_csv(train_path)
 
@@ -39,7 +42,6 @@ def main():
 
     # 3. Huấn luyện mô hình XGBoost
     print(f"[INFO] Bắt đầu train XGBoost với {len(features)} features...")
-    print(f"       Features: {features[:5]}...")
     
     model = xgb.XGBClassifier(
         n_estimators=args.n_estimators,
