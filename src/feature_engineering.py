@@ -119,7 +119,33 @@ def calculate_differences(df: pd.DataFrame, columns, periods=[1]) -> pd.DataFram
 
     return df_feat
 
-<<<<<<< Updated upstream
+def encode_wind_direction(df: pd.DataFrame, col_name='Wind Direction (°)') -> pd.DataFrame:
+    """Encode Wind Direction into Sin and Cos components."""
+    df_feat = df.copy()
+    if col_name in df_feat.columns:
+        df_feat['Wind_Dir_Sin'] = np.sin(df_feat[col_name] * (2 * np.pi / 360))
+        df_feat['Wind_Dir_Cos'] = np.cos(df_feat[col_name] * (2 * np.pi / 360))
+        df_feat.drop(col_name, axis=1, inplace=True)
+    return df_feat
+
+def calculate_loss(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate power loss (Theoretical - Active)."""
+    df_feat = df.copy()
+    if 'Theoretical_Power_Curve (KWh)' in df_feat.columns and 'LV ActivePower (kW)' in df_feat.columns:
+        df_feat['Loss'] = df_feat['Theoretical_Power_Curve (KWh)'] - df_feat['LV ActivePower (kW)']
+    return df_feat
+
+def create_labels(df: pd.DataFrame, loss_threshold=0.5) -> pd.DataFrame:
+    """Create Label_Error target variable based on physical logic."""
+    df_feat = df.copy()
+    if 'Loss' not in df_feat.columns:
+        df_feat = calculate_loss(df_feat)
+        
+    if 'Wind Speed (m/s)' in df_feat.columns and 'LV ActivePower (kW)' in df_feat.columns:
+        cond1 = (df_feat['Wind Speed (m/s)'] >= 3.5) & (df_feat['LV ActivePower (kW)'] <= 0.1)
+        cond2 = (df_feat['Theoretical_Power_Curve (KWh)'] > 0) & (df_feat['Loss'] > loss_threshold * df_feat['Theoretical_Power_Curve (KWh)'])
+        df_feat['Label_Error'] = np.where(cond1 | cond2, 1, 0)
+    return df_feat
 
 if __name__ == "__main__":
     import sys
@@ -156,6 +182,10 @@ if __name__ == "__main__":
         df = calculate_rolling_stats(df, numeric_cols, windows=[6, 24])
         df = calculate_z_scores(df, numeric_cols)
         df = calculate_differences(df, numeric_cols, periods=[1])
+        
+        # Áp dụng Hybrid Features (Sin/Cos, Loss, Label)
+        df = encode_wind_direction(df)
+        df = create_labels(df)
 
         # Lưu kết quả
         os.makedirs(output_dir, exist_ok=True)
@@ -163,32 +193,3 @@ if __name__ == "__main__":
         print(f"[INFO] Đã lưu: {output_path}")
 
     print("[INFO] Hoàn thành feature engineering!")
-=======
-def encode_wind_direction(df: pd.DataFrame, col_name='Wind Direction (°)') -> pd.DataFrame:
-    """Encode Wind Direction into Sin and Cos components."""
-    df_feat = df.copy()
-    if col_name in df_feat.columns:
-        df_feat['Wind_Dir_Sin'] = np.sin(df_feat[col_name] * (2 * np.pi / 360))
-        df_feat['Wind_Dir_Cos'] = np.cos(df_feat[col_name] * (2 * np.pi / 360))
-        df_feat.drop(col_name, axis=1, inplace=True)
-    return df_feat
-
-def calculate_loss(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate power loss (Theoretical - Active)."""
-    df_feat = df.copy()
-    if 'Theoretical_Power_Curve (KWh)' in df_feat.columns and 'LV ActivePower (kW)' in df_feat.columns:
-        df_feat['Loss'] = df_feat['Theoretical_Power_Curve (KWh)'] - df_feat['LV ActivePower (kW)']
-    return df_feat
-
-def create_labels(df: pd.DataFrame, loss_threshold=0.5) -> pd.DataFrame:
-    """Create Label_Error target variable based on physical logic."""
-    df_feat = df.copy()
-    if 'Loss' not in df_feat.columns:
-        df_feat = calculate_loss(df_feat)
-        
-    if 'Wind Speed (m/s)' in df_feat.columns and 'LV ActivePower (kW)' in df_feat.columns:
-        cond1 = (df_feat['Wind Speed (m/s)'] >= 3.5) & (df_feat['LV ActivePower (kW)'] <= 0.1)
-        cond2 = (df_feat['Theoretical_Power_Curve (KWh)'] > 0) & (df_feat['Loss'] > loss_threshold * df_feat['Theoretical_Power_Curve (KWh)'])
-        df_feat['Label_Error'] = np.where(cond1 | cond2, 1, 0)
-    return df_feat
->>>>>>> Stashed changes

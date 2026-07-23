@@ -21,3 +21,7 @@ Tài liệu này ghi nhận các thay đổi cốt lõi để nâng cấp dự �
 ## 4. `src/evaluate.py`
 - **Sửa đổi:** Loại bỏ logic tự động sinh Pseudo-label (Quy tắc 3-Sigma) và xóa bỏ tham số `contamination` (1.5%). Thay vào đó dùng trực tiếp cột `Label_Error` để chấm điểm.
 - **Lý do:** Đánh giá bằng Pseudo-label sinh ra điểm số "ảo". Việc so sánh trực tiếp dự đoán của XGBoost với `Label_Error` (Ground Truth) mang lại các chỉ số F1, AUC, Precision thực tế, phản ánh chính xác bài toán kinh tế của nhà máy điện gió.
+
+## 5. Tích hợp môi trường AWS SageMaker
+- **Sửa đổi:** Khắc phục lỗi xung đột Git (Merge Conflict) trong `src/feature_engineering.py`.
+- **Lý do:** Tích hợp 3 hàm Hybrid mới (`encode_wind_direction`, `calculate_loss`, `create_labels`) vào chung luồng xử lý `if __name__ == "__main__":` của SageMaker. Đảm bảo toàn bộ kiến trúc mới tương thích 100% với môi trường AWS Cloud của bạn.
