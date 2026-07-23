@@ -13,15 +13,12 @@ def main():
     parser.add_argument('--test', type=str, default=os.environ.get('SM_CHANNEL_TEST', '../data/features'))
     parser.add_argument('--output-dir', type=str, default='/opt/ml/processing/evaluation')
     
-    # Tham số contamination dùng để tính F1-score
-    parser.add_argument('--contamination', type=float, default=0.015)
-    
     args = parser.parse_args()
 
     if args.output_dir == '/opt/ml/processing/evaluation':
         args.output_dir = '../reports'
 
-    print("[INFO] Đang tải mô hình GMM và dữ liệu test...")
+    print("[INFO] Đang tải mô hình XGBoost và dữ liệu test...")
     # 1. Load model
     model_path = os.path.join(args.model_dir, "model.joblib")
     if not os.path.exists(model_path):
@@ -31,37 +28,37 @@ def main():
     # 2. Load test data
     test_path = os.path.join(args.test, "T1_test.csv")
     df_test = pd.read_csv(test_path)
+    
+    if 'Label_Error' not in df_test.columns:
+        raise ValueError("Không tìm thấy cột 'Label_Error' trong dữ liệu test.")
 
-    # 3. Tạo Pseudo-labels để đánh giá (Quy tắc 3-Sigma: ngưỡng -3.0 của power_residual)
-    threshold = -3.0
-    y_test_pseudo = (df_test['power_residual'] < threshold).astype(int)
-
-    # --- FEATURE SELECTION ---
-    features = [col for col in df_test.columns if ('zscore' in col) or ('diff' in col)]
+    # 3. Trích xuất đặc trưng và Ground Truth
+    exclude_cols = ['Date/Time', 'timestamp', 'Label_Error', 'index', 'Unnamed: 0']
+    features = [col for col in df_test.columns if col not in exclude_cols]
+    
     X_test = df_test[features]
+    y_test_true = df_test['Label_Error']
 
     print("[INFO] Đang dự đoán và chấm điểm...")
     
-    # 4. Lấy điểm log-likelihood từ GMM (Đổi dấu để điểm càng cao càng bất thường)
-    anomaly_scores = -model.score_samples(X_test)
-
-    # Tính ngưỡng để phân loại 0/1 dựa trên tỷ lệ contamination giả định
-    threshold_gmm = np.percentile(anomaly_scores, 100 * (1 - args.contamination))
-    preds_mapped = (anomaly_scores > threshold_gmm).astype(int)
+    # 4. Lấy điểm dự đoán từ XGBoost
+    preds = model.predict(X_test)
+    preds_proba = model.predict_proba(X_test)[:, 1]
 
     # 5. Tính toán các chỉ số
-    f1 = f1_score(y_test_pseudo, preds_mapped)
-    auc = roc_auc_score(y_test_pseudo, anomaly_scores)
-    precision = precision_score(y_test_pseudo, preds_mapped, zero_division=0)
-    recall = recall_score(y_test_pseudo, preds_mapped)
+    f1 = f1_score(y_test_true, preds)
+    auc = roc_auc_score(y_test_true, preds_proba)
+    precision = precision_score(y_test_true, preds, zero_division=0)
+    recall = recall_score(y_test_true, preds)
 
-    print(f"[RESULT] Pseudo AUC-ROC: {auc:.4f} | Pseudo F1: {f1:.4f}")
+    print(f"[RESULT] True AUC-ROC: {auc:.4f} | True F1: {f1:.4f}")
+    print(f"[RESULT] Precision: {precision:.4f} | Recall: {recall:.4f}")
 
     # 6. Đóng gói kết quả JSON
     report_dict = {
         "classification_metrics": {
-            "pseudo_auc": {"value": auc, "standard_deviation": "NaN"},
-            "pseudo_f1": {"value": f1, "standard_deviation": "NaN"},
+            "auc": {"value": auc, "standard_deviation": "NaN"},
+            "f1": {"value": f1, "standard_deviation": "NaN"},
             "precision": {"value": precision},
             "recall": {"value": recall}
         }
