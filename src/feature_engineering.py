@@ -191,9 +191,23 @@ if __name__ == "__main__":
         df = encode_wind_direction(df)
         df = create_labels(df)
 
-        # Lưu kết quả
+        # Lưu kết quả file tổng
         os.makedirs(output_dir, exist_ok=True)
         df.to_csv(output_path, index=False)
-        print(f"[INFO] Đã lưu: {output_path}")
+        print(f"[INFO] Đã lưu file tổng: {output_path}")
 
-    print("[INFO] Hoàn thành feature engineering!")
+        # --- TỰ ĐỘNG CHIA TRAIN/TEST ---
+        # Import trực tiếp hàm chia của bạn từ preprocessing
+        from preprocessing import split_train_test_chrono
+        train_df, test_df = split_train_test_chrono(df, test_size=0.3)
+        
+        train_path = os.path.join(output_dir, 'T1_train_features.csv')
+        test_path = os.path.join(output_dir, 'T1_test_features.csv')
+        
+        train_df.to_csv(train_path, index=False)
+        test_df.to_csv(test_path, index=False)
+        print(f"[INFO] Đã tự động chia tập dữ liệu thành:")
+        print(f"       -> {train_path} ({len(train_df)} dòng)")
+        print(f"       -> {test_path} ({len(test_df)} dòng)")
+
+    print("[INFO] Hoàn thành toàn bộ Feature Engineering và Split Data!")

@@ -1,18 +1,18 @@
 {
     "classification_metrics": {
-        "pseudo_auc": {
-            "value": 0.9312107222099594,
+        "auc": {
+            "value": 0.9974490111566482,
             "standard_deviation": "NaN"
         },
-        "pseudo_f1": {
-            "value": 0.15765765765765766,
+        "f1": {
+            "value": 0.9727437916414294,
             "standard_deviation": "NaN"
         },
         "precision": {
-            "value": 0.14767932489451477
+            "value": 0.9991704686851929
         },
         "recall": {
-            "value": 0.16908212560386474
+            "value": 0.9476789929189614
         }
     }
 }
