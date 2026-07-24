@@ -16,3 +16,6 @@ Bản hiện tại: Bổ sung 2 cột Month và Hour. Nhờ vậy, máy tính c�
 Bản gốc: Tạo ra quá nhiều cột Rolling Mean, Rolling Std (cửa sổ 3, 6, 12, 24). Nó làm phình to dữ liệu và khiến các cột bị giống hệt nhau (đa cộng tuyến), làm mô hình bị "bối rối" và chạy rất chậm.
 Bản hiện tại: Cắt bỏ sự rườm rà, chỉ giữ lại một cột biến trễ đơn giản Lag_1 (thông số của 10 phút trước đó) để mô hình có khái niệm về "quán tính" của hệ thống là đủ.
 Tổng kết: Output cũ là một tập dữ liệu rườm rà về mặt thống kê nhưng lại mù mờ về mặt vật lý. Output mới là một tập dữ liệu cực kỳ tinh gọn, bám sát các định luật khí động học và sẵn sàng 100% để "cho ăn" (feed) vào các mô hình dự đoán.
+
+Chương:
+Fix lỗi label_Error ghi giá trị vô nghĩa = cách bổ sung Label_Error vào phần lỗi trừ khi scale

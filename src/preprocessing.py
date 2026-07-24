@@ -59,9 +59,17 @@ def scale_features(*args, columns=None, method='standard', return_stats=False, s
     1) scale_features(train_df, test_df, columns) -> (train_scaled, test_scaled)
     2) scale_features(df, columns=cols, method='standard', return_stats=True/False, stats=stats)
     """
+    
+    protected_cols = ['timestamp', 'Label_Error']
+    
     if len(args) == 2 and isinstance(args[1], pd.DataFrame):
         train_df, test_df = args[0], args[1]
-        cols = columns if columns is not None else train_df.select_dtypes(include=[np.number]).columns
+        
+        cols = columns if columns is not None else [
+            c for c in train_df.select_dtypes(include=[np.number]).columns 
+            if c not in protected_cols
+        ]
+        
         scaler = MinMaxScaler()
         train_scaled = train_df.copy()
         test_scaled = test_df.copy()
@@ -70,7 +78,11 @@ def scale_features(*args, columns=None, method='standard', return_stats=False, s
         return train_scaled, test_scaled
     
     df = args[0].copy()
-    cols = columns if columns is not None else [c for c in df.select_dtypes(include=[np.number]).columns if c != 'timestamp']
+    
+    cols = columns if columns is not None else [
+        c for c in df.select_dtypes(include=[np.number]).columns 
+        if c not in protected_cols
+    ]
     
     if stats is None:
         if method == 'standard':
