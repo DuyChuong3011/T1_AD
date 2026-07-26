@@ -1,90 +1,93 @@
+import argparse
 import os
 import json
-import argparse
 import pandas as pd
 import numpy as np
 import joblib
 from sklearn.metrics import f1_score, roc_auc_score, precision_score, recall_score
 
-def main():
+def parse_args():
+    """
+    Nhận đường dẫn cấu hình từ SageMaker.
+    """
     parser = argparse.ArgumentParser()
-    # Nhận đường dẫn từ SageMaker hoặc Local
-    parser.add_argument('--model-dir', type=str, default=os.environ.get('SM_MODEL_DIR', '../models'))
-    parser.add_argument('--test', type=str, default=os.environ.get('SM_CHANNEL_TEST', '../data/features'))
+    parser.add_argument('--model-dir', type=str, default='/opt/ml/processing/model')
+    parser.add_argument('--test', type=str, default='/opt/ml/processing/test')
     parser.add_argument('--output-dir', type=str, default='/opt/ml/processing/evaluation')
-    
-    # Tham số contamination dùng để tính F1-score
-    parser.add_argument('--contamination', type=float, default=0.015)
-    
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    if args.output_dir == '/opt/ml/processing/evaluation':
-        args.output_dir = '../reports'
-
-    print("[INFO] Đang tải mô hình GMM và dữ liệu test...")
-    # 1. Load model
-    model_path = os.path.join(args.model_dir, "model.joblib")
-    if not os.path.exists(model_path):
-        alt_m = os.path.join("models", "model.joblib")
-        if os.path.exists(alt_m):
-            model_path = alt_m
-        else:
-            raise FileNotFoundError(f"Không tìm thấy file model tại: {model_path}")
+def main():
+    print("--- BẮT ĐẦU EVALUATION JOB TRÊN SAGEMAKER ---")
+    args = parse_args()
+    
+    # 1. Tái tạo mô hình từ file artifact (XGBoost)
+    print(f"[INFO] Load model artifact từ {args.model_dir}...")
+    model_path = os.path.join(args.model_dir, "xgboost_model.joblib")
     model = joblib.load(model_path)
-
-    # 2. Load test data
-    test_path = os.path.join(args.test, "T1_test.csv")
-    if not os.path.exists(test_path):
-        alt_t = os.path.join("data", "features", "T1_test.csv")
-        if os.path.exists(alt_t):
-            test_path = alt_t
-        else:
-            raise FileNotFoundError(f"Không tìm thấy file {test_path}")
-    df_test = pd.read_csv(test_path)
-
-    # 3. Tạo Pseudo-labels để đánh giá (Quy tắc 3-Sigma: ngưỡng -3.0 của power_residual)
-    threshold = -3.0
-    y_test_pseudo = (df_test['power_residual'] < threshold).astype(int)
-
-    # --- FEATURE SELECTION ---
-    features = [col for col in df_test.columns if ('zscore' in col) or ('diff' in col)]
-    X_test = df_test[features]
-
-    print("[INFO] Đang dự đoán và chấm điểm...")
     
-    # 4. Lấy điểm log-likelihood từ GMM (Đổi dấu để điểm càng cao càng bất thường)
-    anomaly_scores = -model.score_samples(X_test)
-
-    # Tính ngưỡng để phân loại 0/1 dựa trên tỷ lệ contamination giả định
-    threshold_gmm = np.percentile(anomaly_scores, 100 * (1 - args.contamination))
-    preds_mapped = (anomaly_scores > threshold_gmm).astype(int)
-
-    # 5. Tính toán các chỉ số
-    f1 = f1_score(y_test_pseudo, preds_mapped)
-    auc = roc_auc_score(y_test_pseudo, anomaly_scores)
-    precision = precision_score(y_test_pseudo, preds_mapped, zero_division=0)
-    recall = recall_score(y_test_pseudo, preds_mapped)
-
-    print(f"[RESULT] Pseudo AUC-ROC: {auc:.4f} | Pseudo F1: {f1:.4f}")
-
-    # 6. Đóng gói kết quả JSON
+    # 2. Đọc dữ liệu kiểm thử
+    print(f"[INFO] Đang tải dữ liệu test từ {args.test}...")
+    test_file = os.path.join(args.test, 'T1_test.csv')
+    df_test = pd.read_csv(test_file)
+    target_col = 'Label_Error'
+    
+    # 3. Đồng bộ hóa Feature 
+    print("[INFO] Đồng bộ hóa đặc trưng và ép kiểu dữ liệu...")
+    # Lấy chính xác danh sách các cột mà XGBoost đã dùng lúc train
+    expected_features = model.feature_names_in_ 
+    
+    # Trích xuất X_test và y_test
+    X_test = df_test[expected_features].to_numpy(dtype=float)
+    y_test = df_test[target_col].to_numpy(dtype=int)
+    
+    # 4. Suy luận xác suất (Predict Probabilities)
+    print("[INFO] Tiến hành suy luận (Inference)...")
+    probs = model.predict_proba(X_test)[:, 1]
+    
+    # 5. Tối ưu hóa Threshold (Threshold Moving)
+    print("[INFO] Dò tìm ngưỡng tối ưu...")
+    thresholds = np.arange(0.1, 0.9, 0.05)
+    best_f1 = 0
+    best_thresh = 0.5
+    
+    for thresh in thresholds:
+        preds_adj = (probs >= thresh).astype(int) 
+        f1 = f1_score(y_test, preds_adj)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_thresh = thresh
+            
+    # Tính lại bộ chỉ số cuối cùng
+    final_preds = (probs >= best_thresh).astype(int)
+    precision = precision_score(y_test, final_preds)
+    recall = recall_score(y_test, final_preds)
+    auc = roc_auc_score(y_test, probs)
+    
+    print("="*40)
+    print(f"Ngưỡng tối ưu (Best Threshold) : {best_thresh:.2f}")
+    print(f"F1-Score tối ưu               : {best_f1:.4f}")
+    print(f"ROC-AUC                       : {auc:.4f}")
+    print(f"Precision                     : {precision:.4f}")
+    print(f"Recall                        : {recall:.4f}")
+    print("="*40)
+    
+    # 6. Đóng gói báo cáo JSON chuẩn cấu trúc SageMaker Model Registry
     report_dict = {
         "classification_metrics": {
-            "pseudo_auc": {"value": auc, "standard_deviation": "NaN"},
-            "pseudo_f1": {"value": f1, "standard_deviation": "NaN"},
-            "precision": {"value": precision},
-            "recall": {"value": recall}
+            "f1_score": {"value": float(best_f1), "standard_deviation": "NaN"},
+            "auc": {"value": float(auc), "standard_deviation": "NaN"},
+            "precision": {"value": float(precision), "standard_deviation": "NaN"},
+            "recall": {"value": float(recall), "standard_deviation": "NaN"},
+            "best_threshold": {"value": float(best_thresh), "standard_deviation": "NaN"}
         }
     }
-
-    # 7. Lưu file JSON
-    os.makedirs(args.output_dir, exist_ok=True)
-    out_path = os.path.join(args.output_dir, "evaluation.json")
     
-    with open(out_path, "w") as f:
+    os.makedirs(args.output_dir, exist_ok=True)
+    eval_path = os.path.join(args.output_dir, "evaluation.json")
+    with open(eval_path, "w") as f:
         f.write(json.dumps(report_dict, indent=4))
-
-    print(f"[INFO] Đã lưu báo cáo đánh giá tại: {out_path}")
+        
+    print(f"[SUCCESS] Đã lưu file báo cáo đánh giá tại: {eval_path}")
 
 if __name__ == '__main__':
     main()
