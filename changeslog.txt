@@ -19,3 +19,5 @@ Tổng kết: Output cũ là một tập dữ liệu rườm rà về mặt th�
 
 Chương:
 Fix lỗi label_Error ghi giá trị vô nghĩa = cách bổ sung Label_Error vào phần lỗi trừ khi scale
+Hạnh:
+Bổ sung `scale_pos_weight` động vào XGBoost trong 02_modeling_local.ipynb để xử lý dữ liệu mất cân bằng.
