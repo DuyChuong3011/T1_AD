@@ -14,12 +14,14 @@ def parse_args():
     # 1. Các tham số hệ thống mặc định của SageMaker (Environment Variables)
     parser.add_argument('--model-dir', type=str, default=os.environ.get('SM_MODEL_DIR', './model'))
     parser.add_argument('--train', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', './data/train'))
-    parser.add_argument('--test', type=str, default=os.environ.get('SM_CHANNEL_TEST', './data/test'))
+    parser.add_argument('--test', type=str, default=os.environ.get('SM_CHANNEL_VALIDATION', './data/test'))
     
     # 2. Hyperparameters cho XGBoost
     parser.add_argument('--n_estimators', type=int, default=150)
+    parser.add_argument('--num_round', type=int, default=None) # Alias for n_estimators in HPO
     parser.add_argument('--max_depth', type=int, default=6)
     parser.add_argument('--learning_rate', type=float, default=0.1)
+    parser.add_argument('--eta', type=float, default=None) # Alias for learning_rate in HPO
     parser.add_argument('--scale_pos_weight', type=float, default=1.0)
     
     return parser.parse_args()
@@ -54,10 +56,14 @@ def build_model(args):
     Khởi tạo mô hình XGBoost với các hyperparameters từ đối số.
     """
     print("[INFO] Khởi tạo kiến trúc XGBoost...")
+    
+    n_estimators = args.num_round if args.num_round is not None else args.n_estimators
+    learning_rate = args.eta if args.eta is not None else args.learning_rate
+    
     model = xgb.XGBClassifier(
-        n_estimators=args.n_estimators,
+        n_estimators=n_estimators,
         max_depth=args.max_depth,
-        learning_rate=args.learning_rate,
+        learning_rate=learning_rate,
         scale_pos_weight=args.scale_pos_weight,
         random_state=42,
         n_jobs=-1

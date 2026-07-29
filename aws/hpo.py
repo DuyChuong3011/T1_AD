@@ -1,58 +1,73 @@
-import boto3
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import sagemaker
+from sagemaker.xgboost.estimator import XGBoost
+from sagemaker.tuner import IntegerParameter, ContinuousParameter, HyperparameterTuner
+import boto3
 
-from sagemaker.session import Session
-from sagemaker.sklearn.estimator import SKLearn
-from sagemaker.tuner import HyperparameterTuner
-from sagemaker.parameter import IntegerParameter, ContinuousParameter
+def run_hpo_job():
+    sagemaker_session = sagemaker.Session()
+    # Chạy ở Local không dùng được get_execution_role(), phải chỉ định rõ Role ARN
+    role = "arn:aws:iam::795644302727:role/SageMakerExecutionRole-MLOps"
+    # Dữ liệu của bạn được upload lên bucket amznce23 (theo file setupS3.py)
+    bucket = "amznce23"
+    
+    # Định nghĩa đường dẫn dữ liệu Tuabin gió trên S3 (đã được sửa cho khớp với setupS3.py)
+    output_path = f's3://{bucket}/hpo_models/'
 
-def run_hpo():
-    print("[INFO] Bắt đầu thiết lập Hyperparameter Tuning Job...")
-
-    boto_session = boto3.Session()
-    sagemaker_session = Session(boto_session=boto_session)
-
-    role = "arn:aws:iam::795644302727:role/SageMakerExecutionRole-MLOps" 
-    bucket = sagemaker_session.default_bucket()
-
-    xgb_estimator = SKLearn(
-        entry_point="src/train.py",
-        framework_version="1.2-1",
-        instance_type="ml.m5.xlarge", 
-        instance_count=1,
+    # Estimator nền tảng
+    xgb_estimator = XGBoost(
+        entry_point='train.py',
+        source_dir='src',
+        framework_version='1.7-1',
         role=role,
+        instance_count=1,
+        instance_type='ml.m5.large',
+        output_path=output_path,
         sagemaker_session=sagemaker_session,
+        hyperparameters={
+            'scale_pos_weight': "10.0" # Giá trị tĩnh, không thể tune do giới hạn của AWS container
+        }
     )
 
+    # 1. Định nghĩa hyperparameter_ranges (chỉ dùng các tên hợp lệ của XGBoost)
     hyperparameter_ranges = {
-        "max_depth": IntegerParameter(3, 10),
-        "n_estimators": IntegerParameter(50, 200),
-        "learning_rate": ContinuousParameter(0.01, 0.3),
-        "scale_pos_weight": ContinuousParameter(1.0, 10.0)
+        'max_depth': IntegerParameter(3, 10),
+        'num_round': IntegerParameter(50, 200),  # Tương đương n_estimators
+        'eta': ContinuousParameter(0.01, 0.3)    # Tương đương learning_rate
     }
 
-    metric_definitions = [
-        {"Name": "Validation-F1", "Regex": "Validation-F1: ([0-9\\.]+)"}
-    ]
+    # XGBoost trên SageMaker (Script Mode) sẽ in kết quả ra log.
+    # Cần Regex để bắt objective metric là F1 từ Terminal stdout
+    metric_definitions = [{'Name': 'validation:f1', 'Regex': 'Validation-F1: ([0-9\\.]+)'}]
 
+    # 2. Khởi tạo Hyperparameter Tuner
     tuner = HyperparameterTuner(
         estimator=xgb_estimator,
-        objective_metric_name="Validation-F1",
+        objective_metric_name='validation:f1', # objective metric là validation:f1 (chuẩn của AWS)
+        objective_type='Maximize',
         hyperparameter_ranges=hyperparameter_ranges,
         metric_definitions=metric_definitions,
-        objective_type="Maximize",
-        max_jobs=10,
-        max_parallel_jobs=1,
+        max_jobs=10, # max 10 jobs
+        max_parallel_jobs=2 # chạy 2 job song song
     )
 
-    print("[INFO] Đang đẩy kịch bản HPO lên Cloud SageMaker...")
+    inputs = {
+        'train': f's3://{bucket}/features/T1_train.csv',
+        'validation': f's3://{bucket}/features/T1_test.csv'
+    }
+
+    print("[INFO] Đang khởi động tiến trình Hyperparameter Tuning (HPO)...")
+    # 3. Gọi tuner.fit() để khởi động
+    tuner.fit(inputs)
+    tuner.wait()
+
+    # 4. Lấy tên job tốt nhất, in hyperparameters của job đó
+    best_job_name = tuner.best_training_job()
+    print(f"\n[WINNER] Tên Job tốt nhất: {best_job_name}")
     
-    tuner.fit({
-        "train": f"s3://{bucket}/data/features/train.csv",
-        "test": f"s3://{bucket}/data/features/test.csv"
-    })
-    
-    print(f"\n✅ Job HPO đã được đẩy lên thành công! Tên Job: {tuner.latest_tuning_job.name}")
+    best_job_info = boto3.client('sagemaker').describe_training_job(TrainingJobName=best_job_name)
+    print(f"[WINNER] Bộ siêu tham số tốt nhất:\n{best_job_info['HyperParameters']}")
 
 if __name__ == "__main__":
-    run_hpo()
+    run_hpo_job()
