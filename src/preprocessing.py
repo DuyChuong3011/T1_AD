@@ -1,3 +1,9 @@
+import sys
+import os
+# Chặn lỗi ModuleNotFoundError khi chạy trên SageMaker
+sys.path.insert(0, "/opt/ml/processing/input/code/src")
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
@@ -104,3 +110,85 @@ def scale_features(*args, columns=None, method='standard', return_stats=False, s
         return df, stats
     return df
 
+
+
+
+if __name__ == '__main__':
+    import argparse
+    import os
+    import sys
+    import joblib
+
+    # ── Cấu hình đường dẫn SageMaker ────────────────────────────────
+    # Chặn lỗi ModuleNotFoundError khi chạy trên SageMaker
+    sys.path.insert(0, "/opt/ml/processing/input/code/src")
+    import feature_engineering as feat
+    # (các hàm preprocessing đã nằm ngay trong file này)
+
+    INPUT_DATA = "/opt/ml/processing/input/data"
+    OUTPUT_PROC = "/opt/ml/processing/output/processed"
+    OUTPUT_TRAIN = "/opt/ml/processing/output/train"
+    OUTPUT_TEST = "/opt/ml/processing/output/test"
+
+    for p in [OUTPUT_PROC, OUTPUT_TRAIN, OUTPUT_TEST]:
+        os.makedirs(p, exist_ok=True)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--train-ratio", type=float, default=0.7)
+    args = parser.parse_args()
+
+    # ════════════════════════════════════════════════════════════════
+    # ĐỌC DỮ LIỆU
+    # ════════════════════════════════════════════════════════════════
+    input_file = os.path.join(INPUT_DATA, "T1.csv")
+    if not os.path.exists(input_file):
+        # Fallback cho debug local nếu lỡ chạy ở ngoài
+        input_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'raw', 'T1.csv')
+    
+    print(f"[INFO] Đọc dữ liệu từ: {input_file}")
+    df = load_data(input_file, time_col='Date/Time', freq='10min')
+    df = handle_missing_values(df, strategy='interpolate')
+    print(f"✅ Đọc và lấp khuyết T1.csv | Shape: {df.shape}")
+
+    # ════════════════════════════════════════════════════════════════
+    # BƯỚC 1+2: CLEANING + SMART TRANSFORMATION
+    # ════════════════════════════════════════════════════════════════
+    df_clean = clean_physical_limits(df)
+    df_clean = encode_wind_direction(df_clean, col='Wind Direction (°)')
+    df_clean = feat.extract_time_features(df_clean, time_col='timestamp')
+    df_clean = create_labels(df_clean, loss_threshold=0.5)
+
+    df_clean.to_csv(os.path.join(OUTPUT_PROC, "T1_processed.csv"), index=False)
+    print(f"✅ Cleaning xong | Shape: {df_clean.shape}")
+
+    # ════════════════════════════════════════════════════════════════
+    # BƯỚC 3: FEATURE ENGINEERING
+    # ════════════════════════════════════════════════════════════════
+    fe_cols = ['LV ActivePower (kW)', 'Wind Speed (m/s)', 'Theoretical_Power_Curve (KWh)']
+    df_clean['power_residual'] = df_clean['LV ActivePower (kW)'] - df_clean['Theoretical_Power_Curve (KWh)']
+
+    df_features = feat.calculate_rolling_stats(df_clean, columns=fe_cols, windows=[6, 24])
+    df_features = feat.calculate_z_scores(df_features, columns=fe_cols)
+    df_features = feat.calculate_differences(df_features, columns=fe_cols, periods=[1])
+    
+    df_features = df_features.dropna()
+    print(f"✅ Feature Engineering xong | Shape: {df_features.shape}")
+    print(f" Label_Error: {df_features['Label_Error'].sum()} lỗi / {len(df_features)} mẫu")
+
+    # ════════════════════════════════════════════════════════════════
+    # BƯỚC 4: SPLIT + SCALE
+    # ════════════════════════════════════════════════════════════════
+    test_size = 1.0 - args.train_ratio
+    train_df, test_df = split_train_test_chrono(df_features, test_size=test_size)
+
+    train_df, scale_stats = scale_features(train_df, method='standard', return_stats=True)
+    test_df = scale_features(test_df, method='standard', stats=scale_stats)
+
+    # Lưu scaler struct (dictionary) vì ta dùng custom scaler
+    joblib.dump(scale_stats, os.path.join(OUTPUT_TRAIN, "scale_stats.pkl"))
+    
+    train_df.to_csv(os.path.join(OUTPUT_TRAIN, "T1_train.csv"), index=False)
+    test_df.to_csv(os.path.join(OUTPUT_TEST, "T1_test.csv"), index=False)
+
+    print(f"✅ Split & Scale xong | Train: {len(train_df)} | Test: {len(test_df)}")
+    print("🎉 Tiền xử lý hoàn tất!")
