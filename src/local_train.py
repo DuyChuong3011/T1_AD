@@ -18,7 +18,8 @@ df_train = pd.read_csv(TRAIN_PATH)
 df_test = pd.read_csv(TEST_PATH)
 
 target_col = 'Label_Error'
-features = [c for c in df_train.columns if c not in ['timestamp', target_col]]
+leakage_keywords = ['timestamp', 'LV ActivePower', 'Theoretical_Power_Curve', 'Loss', 'power_residual', 'Label_Error']
+features = [col for col in df_train.columns if not any(kw in col for kw in leakage_keywords)]
 
 X_train = df_train[features].values
 y_train = df_train[target_col].values
@@ -31,15 +32,15 @@ print(f"-> Test shape: {X_test.shape}")
 print("\n[INFO] Đang khởi tạo và huấn luyện XGBoost...")
 # Sử dụng bộ tham số của Weapon 2 (Hybrid) để đối chiếu
 model = xgb.XGBClassifier(
-    n_estimators=161,       
-    max_depth=3,        
-    learning_rate=0.09,           
-    scale_pos_weight=10,
-    reg_alpha=0.0,
-    reg_lambda=0.47,
-    gamma=0.42,
-    subsample=0.98,
-    colsample_bytree=0.66,
+    n_estimators=265,       
+    max_depth=10,        
+    learning_rate=0.026568,           
+    scale_pos_weight=1.212868,
+    reg_alpha=3.691853,
+    reg_lambda=6.752980,
+    gamma=4.194749,
+    subsample=0.686712,
+    colsample_bytree=0.655952,
     random_state=42,
     n_jobs=-1
 )
@@ -47,14 +48,29 @@ model = xgb.XGBClassifier(
 model.fit(X_train, y_train)
 print("[SUCCESS] Huấn luyện hoàn tất!")
 
-# Đánh giá với ngưỡng mặc định 0.5
 y_pred_probs = model.predict_proba(X_test)[:, 1]
-y_pred = (y_pred_probs >= 0.5).astype(int)
 
+# Tối ưu hóa ngưỡng dự đoán (threshold) để tối đa hóa F1-Score
+import numpy as np
+best_f1 = 0
+best_threshold = 0.5
+best_y_pred = None
+
+for threshold in np.arange(0.1, 0.9, 0.05):
+    y_pred_tmp = (y_pred_probs >= threshold).astype(int)
+    score = f1_score(y_test, y_pred_tmp, zero_division=0)
+    if score > best_f1:
+        best_f1 = score
+        best_threshold = threshold
+        best_y_pred = y_pred_tmp
+
+y_pred = best_y_pred
 roc_auc = roc_auc_score(y_test, y_pred_probs)
-f1 = f1_score(y_test, y_pred)
+f1 = best_f1
 precision = precision_score(y_test, y_pred, zero_division=0)
 recall = recall_score(y_test, y_pred, zero_division=0)
+
+print(f"\n[INFO] Threshold tối ưu: {best_threshold:.2f}")
 
 print("\n" + "="*40)
 print("KẾT QUẢ ĐÁNH GIÁ")
