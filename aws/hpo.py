@@ -7,12 +7,10 @@ import boto3
 
 def run_hpo_job():
     sagemaker_session = sagemaker.Session()
-    # Chạy ở Local không dùng được get_execution_role(), phải chỉ định rõ Role ARN
     role = "arn:aws:iam::795644302727:role/SageMakerExecutionRole-MLOps"
-    # Dữ liệu của bạn được upload lên bucket amznce23 (theo file setupS3.py)
     bucket = "amznce23"
     
-    # Định nghĩa đường dẫn dữ liệu Tuabin gió trên S3 (đã được sửa cho khớp với setupS3.py)
+    # Định nghĩa đường dẫn dữ liệu Tuabin gió trên S3 
     output_path = f's3://{bucket}/hpo_models/'
 
     # Estimator nền tảng
@@ -30,11 +28,16 @@ def run_hpo_job():
         }
     )
 
-    # 1. Định nghĩa hyperparameter_ranges (chỉ dùng các tên hợp lệ của XGBoost)
+    # 1. Định nghĩa hyperparameter_ranges
     hyperparameter_ranges = {
         'max_depth': IntegerParameter(3, 10),
-        'num_round': IntegerParameter(50, 200),  # Tương đương n_estimators
-        'eta': ContinuousParameter(0.01, 0.3)    # Tương đương learning_rate
+        'num_round': IntegerParameter(50, 200), 
+        'eta': ContinuousParameter(0.01, 0.3),
+        'subsample': ContinuousParameter(0.5, 1.0),
+        'colsample_bytree': ContinuousParameter(0.5, 1.0),
+        'alpha': ContinuousParameter(0.0, 10.0), # L1
+        'lambda': ContinuousParameter(0.0, 10.0), # L2
+        'gamma': ContinuousParameter(0.0, 5.0)
     }
 
     # XGBoost trên SageMaker (Script Mode) sẽ in kết quả ra log.
@@ -48,8 +51,8 @@ def run_hpo_job():
         objective_type='Maximize',
         hyperparameter_ranges=hyperparameter_ranges,
         metric_definitions=metric_definitions,
-        max_jobs=10, # max 10 jobs
-        max_parallel_jobs=2 # chạy 2 job song song
+        max_jobs=30, # max 30 jobs
+        max_parallel_jobs=3 # chạy 3 job song song
     )
 
     inputs = {

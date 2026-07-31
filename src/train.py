@@ -24,6 +24,13 @@ def parse_args():
     parser.add_argument('--eta', type=float, default=None) # Alias for learning_rate in HPO
     parser.add_argument('--scale_pos_weight', type=float, default=1.0)
     
+    # Advanced HPO
+    parser.add_argument('--subsample', type=float, default=1.0)
+    parser.add_argument('--colsample_bytree', type=float, default=1.0)
+    parser.add_argument('--alpha', type=float, default=0.0)
+    parser.add_argument('--lambda', dest='reg_lambda', type=float, default=1.0)
+    parser.add_argument('--gamma', type=float, default=0.0)
+    
     return parser.parse_args()
 
 def load_data(train_path, test_path):
@@ -65,6 +72,11 @@ def build_model(args):
         max_depth=args.max_depth,
         learning_rate=learning_rate,
         scale_pos_weight=args.scale_pos_weight,
+        subsample=args.subsample,
+        colsample_bytree=args.colsample_bytree,
+        reg_alpha=args.alpha,
+        reg_lambda=args.reg_lambda,
+        gamma=args.gamma,
         random_state=42,
         n_jobs=-1
     )
