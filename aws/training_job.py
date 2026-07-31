@@ -21,15 +21,15 @@ def run_training_job():
         source_dir='src', 
         framework_version='1.7-1',
         hyperparameters={
-            "num_round": 52,       
+            "num_round": 161,       
             "max_depth": 3,        
-            "eta": 0.14,           
+            "eta": 0.09,           
             "scale_pos_weight": 10,
-            "alpha": 6.27,
-            "lambda": 6.30,
-            "gamma": 2.12,
-            "subsample": 0.93,
-            "colsample_bytree": 0.51
+            "alpha": 0.0,
+            "lambda": 0.47,
+            "gamma": 0.42,
+            "subsample": 0.98,
+            "colsample_bytree": 0.66
         }, 
         role=role,
         instance_count=1,

@@ -2,6 +2,8 @@ import boto3
 import sagemaker
 from sagemaker.sklearn.processing import SKLearnProcessor
 from sagemaker.processing import ProcessingInput, ProcessingOutput
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 
 # ── Cấu hình ────────────────────────────────────────────────────
 BUCKET = "amznce23"
@@ -19,7 +21,7 @@ processor = SKLearnProcessor(
     framework_version="1.2-1",
     role=ROLE,
     instance_count=1,
-    instance_type="ml.t3.medium",
+    instance_type="ml.m5.large",
     base_job_name="t1-ad-preprocessing",
     sagemaker_session=sagemaker_session
 )

@@ -56,8 +56,8 @@ def run_hpo_job():
     )
 
     inputs = {
-        'train': f's3://{bucket}/features/T1_train.csv',
-        'validation': f's3://{bucket}/features/T1_test.csv'
+        'train': f's3://{bucket}/features/T1_train_hybrid.csv',
+        'validation': f's3://{bucket}/features/T1_test_hybrid.csv'
     }
 
     print("[INFO] Đang khởi động tiến trình Hyperparameter Tuning (HPO)...")

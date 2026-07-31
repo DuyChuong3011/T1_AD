@@ -39,8 +39,11 @@ def load_data(train_path, test_path):
     """
     print(f"[INFO] Đang tải dữ liệu từ {train_path} và {test_path}...")
     
-    train_file = os.path.join(train_path, 'T1_train.csv')
-    test_file = os.path.join(test_path, 'T1_test.csv')
+    train_files = [f for f in os.listdir(train_path) if f.endswith('.csv')]
+    test_files = [f for f in os.listdir(test_path) if f.endswith('.csv')]
+    
+    train_file = os.path.join(train_path, train_files[0])
+    test_file = os.path.join(test_path, test_files[0])
     
     df_train = pd.read_csv(train_file)
     df_test = pd.read_csv(test_file)
