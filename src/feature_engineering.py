@@ -64,19 +64,43 @@ def calculate_rolling_stats(df: pd.DataFrame, columns, windows=[6, 24]) -> pd.Da
                 df_feat[f"{col}_roll_std_{w}"] = df_feat[col].rolling(w, min_periods=1).std().fillna(0)
     return df_feat
 
-def calculate_z_scores(df: pd.DataFrame, columns) -> pd.DataFrame:
-    """Tính điểm Z-score cho các cột chỉ định."""
+def calculate_z_scores(df: pd.DataFrame, columns, mean_dict=None, std_dict=None) -> tuple:
+    """
+    Tính Z-score cho các cột chỉ định (tránh data leakage).
+
+    Nếu mean_dict & std_dict = None: Tính stats từ df (training set)
+      Returns: (df_transformed, (mean_dict, std_dict))
+
+    Nếu mean_dict & std_dict được cho: Apply stats (test set)
+      Returns: df_transformed
+    """
     df_feat = df.copy()
     if isinstance(columns, str):
         columns = [columns]
-        
-    for col in columns:
-        if col in df_feat.columns:
-            mean = df_feat[col].mean()
-            std = df_feat[col].std()
-            std = std if std != 0 else 1.0
-            df_feat[f"{col}_zscore"] = (df_feat[col] - mean) / std
-    return df_feat
+
+    # Tính stats từ df (training set)
+    if mean_dict is None or std_dict is None:
+        mean_dict = {}
+        std_dict = {}
+        for col in columns:
+            if col in df_feat.columns:
+                mean_dict[col] = df_feat[col].mean()
+                std_dict[col] = df_feat[col].std()
+                std_dict[col] = std_dict[col] if std_dict[col] != 0 else 1.0
+
+        # Apply Z-score
+        for col in columns:
+            if col in df_feat.columns:
+                df_feat[f"{col}_zscore"] = (df_feat[col] - mean_dict[col]) / std_dict[col]
+
+        return df_feat, (mean_dict, std_dict)
+
+    else:
+        # Apply Z-score với stats cho trước (test set)
+        for col in columns:
+            if col in df_feat.columns:
+                df_feat[f"{col}_zscore"] = (df_feat[col] - mean_dict[col]) / std_dict[col]
+        return df_feat
 
 def calculate_differences(df: pd.DataFrame, columns, periods=[1]) -> pd.DataFrame:
     """Tính sai phân (difference) cho các cột chỉ định."""

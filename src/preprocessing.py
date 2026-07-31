@@ -167,25 +167,49 @@ if __name__ == '__main__':
     print(f"✅ Cleaning xong | Shape: {df_clean.shape}")
 
     # ════════════════════════════════════════════════════════════════
-    # BƯỚC 3: FEATURE ENGINEERING
+    # BƯỚC 3: FEATURE ENGINEERING (Rolling Stats trước)
     # ════════════════════════════════════════════════════════════════
     fe_cols = ['LV ActivePower (kW)', 'Wind Speed (m/s)', 'Theoretical_Power_Curve (KWh)']
     df_clean['power_residual'] = df_clean['LV ActivePower (kW)'] - df_clean['Theoretical_Power_Curve (KWh)']
 
+    # Step 1: Rolling stats (OK, backward-only, không leak)
     df_features = feat.calculate_rolling_stats(df_clean, columns=fe_cols, windows=[6, 24])
-    df_features = feat.calculate_z_scores(df_features, columns=fe_cols)
-    df_features = feat.calculate_differences(df_features, columns=fe_cols, periods=[1])
-    
+
+    # Step 2: DROP NA before split
     df_features = df_features.dropna()
-    print(f"✅ Feature Engineering xong | Shape: {df_features.shape}")
+    print(f"✅ Rolling Stats xong | Shape: {df_features.shape}")
     print(f" Label_Error: {df_features['Label_Error'].sum()} lỗi / {len(df_features)} mẫu")
 
     # ════════════════════════════════════════════════════════════════
-    # BƯỚC 4: SPLIT + SCALE
+    # BƯỚC 3b: SPLIT TRAIN/TEST TRƯỚC Z-SCORE (Tránh data leakage)
     # ════════════════════════════════════════════════════════════════
     test_size = 1.0 - args.train_ratio
     train_df, test_df = split_train_test_chrono(df_features, test_size=test_size)
+    print(f"✅ Split xong | Train: {len(train_df)} | Test: {len(test_df)}")
 
+    # ════════════════════════════════════════════════════════════════
+    # BƯỚC 4: Z-SCORE từ TRAIN stats (Không leak)
+    # ════════════════════════════════════════════════════════════════
+    # Tính Z-score stats từ TRAIN chỉ
+    train_df, z_stats = feat.calculate_z_scores(train_df, columns=fe_cols)
+    z_mean, z_std = z_stats
+
+    # Apply Z-score vào TEST với TRAIN stats (không tính lại)
+    test_df = feat.calculate_z_scores(test_df, columns=fe_cols, mean_dict=z_mean, std_dict=z_std)
+
+    print(f"✅ Z-score xong (no leakage)")
+
+    # ════════════════════════════════════════════════════════════════
+    # BƯỚC 5: DIFFERENCES
+    # ════════════════════════════════════════════════════════════════
+    train_df = feat.calculate_differences(train_df, columns=fe_cols, periods=[1])
+    test_df = feat.calculate_differences(test_df, columns=fe_cols, periods=[1])
+
+    print(f"✅ Feature Engineering xong")
+
+    # ════════════════════════════════════════════════════════════════
+    # BƯỚC 6: SCALE
+    # ════════════════════════════════════════════════════════════════
     train_df, scale_stats = scale_features(train_df, method='standard', return_stats=True)
     test_df = scale_features(test_df, method='standard', stats=scale_stats)
 
