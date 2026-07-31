@@ -3,6 +3,7 @@ import os
 # Chặn lỗi ModuleNotFoundError khi chạy trên SageMaker
 sys.path.insert(0, "/opt/ml/processing/input/code/src")
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+sys.stdout.reconfigure(encoding='utf-8')
 
 import pandas as pd
 import numpy as np
@@ -125,10 +126,14 @@ if __name__ == '__main__':
     import feature_engineering as feat
     # (các hàm preprocessing đã nằm ngay trong file này)
 
-    INPUT_DATA = "/opt/ml/processing/input/data"
-    OUTPUT_PROC = "/opt/ml/processing/output/processed"
-    OUTPUT_TRAIN = "/opt/ml/processing/output/train"
-    OUTPUT_TEST = "/opt/ml/processing/output/test"
+    # Check if running locally
+    is_local = not os.path.exists("/opt/ml")
+    base_dir = os.path.dirname(os.path.dirname(__file__)) if is_local else ""
+    
+    INPUT_DATA = os.path.join(base_dir, "data", "raw") if is_local else "/opt/ml/processing/input/data"
+    OUTPUT_PROC = os.path.join(base_dir, "data", "processed") if is_local else "/opt/ml/processing/output/processed"
+    OUTPUT_TRAIN = os.path.join(base_dir, "data", "features", "train") if is_local else "/opt/ml/processing/output/train"
+    OUTPUT_TEST = os.path.join(base_dir, "data", "features", "test") if is_local else "/opt/ml/processing/output/test"
 
     for p in [OUTPUT_PROC, OUTPUT_TRAIN, OUTPUT_TEST]:
         os.makedirs(p, exist_ok=True)
